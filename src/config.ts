@@ -79,10 +79,10 @@ export function parseServerConfig(): ServerConfig {
     mode: (process.env.MCP_SERVER_MODE as 'stdio' | 'http' | 'dual') || defaultConfig.mode,
     port: process.env.PORT ? parseInt(process.env.PORT, 10) : defaultConfig.port,
     host: defaultConfig.host,
-    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : defaultConfig.corsOrigins,
-    enableIPv6: process.env.ENABLE_IPV6 ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : defaultConfig.enableIPv6,
-    allowPrivateNetworkAccess: process.env.ALLOW_PRIVATE_NETWORK_ACCESS ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : defaultConfig.allowPrivateNetworkAccess,
-    railwayInternalAccess: process.env.RAILWAY_INTERNAL_ACCESS ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : defaultConfig.railwayInternalAccess,
+    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(s => s.length > 0) : defaultConfig.corsOrigins,
+    enableIPv6: process.env.ENABLE_IPV6 !== undefined ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : defaultConfig.enableIPv6,
+    allowPrivateNetworkAccess: process.env.ALLOW_PRIVATE_NETWORK_ACCESS !== undefined ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : defaultConfig.allowPrivateNetworkAccess,
+    railwayInternalAccess: process.env.RAILWAY_INTERNAL_ACCESS !== undefined ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : defaultConfig.railwayInternalAccess,
   };
   
   return config;
@@ -223,11 +223,11 @@ export function getEnvironmentConfig(): EnvironmentConfig {
     RAILWAY_SERVICE_NAME: process.env.RAILWAY_SERVICE_NAME,
     MCP_SERVER_MODE: process.env.MCP_SERVER_MODE as 'stdio' | 'http' | 'dual' | undefined,
     CORS_ORIGINS: process.env.CORS_ORIGINS,
-    ENABLE_IPV6: process.env.ENABLE_IPV6 ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : undefined,
-    IPV6_DUAL_STACK: process.env.IPV6_DUAL_STACK ? process.env.IPV6_DUAL_STACK.toLowerCase() === 'true' : undefined,
-    IPV6_PREFER: process.env.IPV6_PREFER ? process.env.IPV6_PREFER.toLowerCase() === 'true' : undefined,
-    ALLOW_PRIVATE_NETWORK_ACCESS: process.env.ALLOW_PRIVATE_NETWORK_ACCESS ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : undefined,
-    RAILWAY_INTERNAL_ACCESS: process.env.RAILWAY_INTERNAL_ACCESS ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : undefined,
+    ENABLE_IPV6: process.env.ENABLE_IPV6 !== undefined ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : undefined,
+    IPV6_DUAL_STACK: process.env.IPV6_DUAL_STACK !== undefined ? process.env.IPV6_DUAL_STACK.toLowerCase() === 'true' : undefined,
+    IPV6_PREFER: process.env.IPV6_PREFER !== undefined ? process.env.IPV6_PREFER.toLowerCase() === 'true' : undefined,
+    ALLOW_PRIVATE_NETWORK_ACCESS: process.env.ALLOW_PRIVATE_NETWORK_ACCESS !== undefined ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : undefined,
+    RAILWAY_INTERNAL_ACCESS: process.env.RAILWAY_INTERNAL_ACCESS !== undefined ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : undefined,
     GMAIL_CREDENTIALS_PATH: process.env.GMAIL_CREDENTIALS_PATH,
     GMAIL_OAUTH_PATH: process.env.GMAIL_OAUTH_PATH,
   };

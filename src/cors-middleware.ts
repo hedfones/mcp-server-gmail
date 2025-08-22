@@ -138,6 +138,9 @@ export class CORSMiddleware {
     if (pattern.includes('*')) {
       const regexPattern = pattern
         .replace(/\./g, '\\.')  // Escape dots
+        .replace(/\[/g, '\\[')  // Escape square brackets for IPv6
+        .replace(/\]/g, '\\]')  // Escape square brackets for IPv6
+        .replace(/:/g, ':')     // Keep colons as-is for IPv6
         .replace(/\*/g, '.*');  // Convert * to .*
       
       const regex = new RegExp(`^${regexPattern}$`, 'i');
