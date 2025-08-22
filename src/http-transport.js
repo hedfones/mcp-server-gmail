@@ -6,7 +6,8 @@
 import http from 'http';
 import { URL } from 'url';
 import { bindToOptimalNetwork, logNetworkConfiguration, detectNetworkStack, handleNetworkBindingError } from './network-utils.js';
-import { createNetworkConfig } from './config.js';
+import { createNetworkConfig, getMergedCORSOrigins } from './config.js';
+import { createCORSMiddleware } from './cors-middleware.js';
 
 /**
  * HTTP Server Transport class that wraps MCP server functionality
@@ -17,6 +18,15 @@ export class HttpServerTransport {
     this.config = config;
     this.httpServer = null;
     this.isRunning = false;
+    
+    // Initialize CORS middleware with merged origins (configured + private network)
+    const mergedOrigins = getMergedCORSOrigins(config);
+    this.corsMiddleware = createCORSMiddleware(mergedOrigins);
+    
+    console.log(`CORS middleware initialized with ${mergedOrigins.length} allowed origin patterns`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Allowed CORS origins:', mergedOrigins);
+    }
   }
 
   /**
@@ -92,13 +102,25 @@ export class HttpServerTransport {
    * Handles incoming HTTP requests
    */
   async handleRequest(req, res) {
-    // Set CORS headers
-    this.setCorsHeaders(res);
+    // Handle CORS preflight requests first
+    if (this.corsMiddleware.handlePreflightRequest(req, res)) {
+      return;
+    }
 
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      res.writeHead(200);
-      res.end();
+    // Set CORS headers for all requests
+    const corsValidation = this.corsMiddleware.setCORSHeaders(req, res);
+    
+    // For security-sensitive endpoints, enforce CORS validation
+    const origin = req.headers.origin;
+    const isSecureEndpoint = req.url && (req.url.startsWith('/mcp') || req.url.includes('auth'));
+    
+    if (isSecureEndpoint && origin && !corsValidation.allowed) {
+      console.warn(`CORS validation failed for secure endpoint ${req.url}:`, corsValidation.reason);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'CORS policy violation',
+        message: 'Origin not allowed for this endpoint'
+      }));
       return;
     }
 
@@ -252,6 +274,9 @@ export class HttpServerTransport {
     
     // Network health check
     checks.network = await this.checkNetworkHealth();
+    
+    // CORS configuration check
+    checks.cors = this.checkCORSConfiguration();
 
     // Determine overall status
     const allChecks = Object.values(checks);
@@ -373,18 +398,60 @@ export class HttpServerTransport {
   }
 
   /**
-   * Sets CORS headers for cross-origin requests
+   * Checks CORS configuration health
    */
-  setCorsHeaders(res) {
-    // Allow configured origins or default to private network ranges
-    const allowedOrigins = this.config.corsOrigins && this.config.corsOrigins.length > 0
-      ? this.config.corsOrigins
-      : ['http://localhost:*', 'http://127.0.0.1:*', 'http://10.*', 'http://172.16.*', 'http://192.168.*'];
+  checkCORSConfiguration() {
+    try {
+      const corsConfig = this.corsMiddleware.getConfig();
+      const originCount = corsConfig.origins.length;
+      
+      // Test a few common private network origins
+      const testOrigins = [
+        'http://localhost:3000',
+        'http://192.168.1.100:8080',
+        'http://10.0.0.1:3000',
+        'https://myapp.railway.app'
+      ];
+      
+      const validationResults = this.corsMiddleware.validateOrigins(testOrigins);
+      
+      return {
+        status: originCount > 0 ? 'healthy' : 'degraded',
+        details: {
+          configuredOrigins: originCount,
+          allowedMethods: corsConfig.methods,
+          allowedHeaders: corsConfig.allowedHeaders.length,
+          maxAge: corsConfig.maxAge,
+          testResults: {
+            tested: testOrigins.length,
+            allowed: validationResults.allowed.length,
+            rejected: validationResults.rejected.length
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        error: error.message
+      };
+    }
+  }
 
-    res.setHeader('Access-Control-Allow-Origin', '*'); // For now, allow all origins
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  /**
+   * Gets the CORS middleware instance for external access
+   */
+  getCORSMiddleware() {
+    return this.corsMiddleware;
+  }
+
+  /**
+   * Updates CORS configuration at runtime
+   */
+  updateCORSConfig(newOrigins) {
+    if (newOrigins && Array.isArray(newOrigins)) {
+      this.corsMiddleware.updateConfig({ origins: newOrigins });
+      console.log('CORS configuration updated with new origins:', newOrigins);
+    }
   }
 
   /**

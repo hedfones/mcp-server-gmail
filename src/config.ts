@@ -8,6 +8,8 @@ export interface ServerConfig {
   host?: string;
   corsOrigins?: string[];
   enableIPv6?: boolean;
+  allowPrivateNetworkAccess?: boolean;
+  railwayInternalAccess?: boolean;
 }
 
 export interface NetworkConfig {
@@ -30,6 +32,8 @@ export interface EnvironmentConfig {
   ENABLE_IPV6?: boolean;
   IPV6_DUAL_STACK?: boolean;
   IPV6_PREFER?: boolean;
+  ALLOW_PRIVATE_NETWORK_ACCESS?: boolean;
+  RAILWAY_INTERNAL_ACCESS?: boolean;
   
   // Existing Gmail config
   GMAIL_CREDENTIALS_PATH?: string;
@@ -66,6 +70,8 @@ export function parseServerConfig(): ServerConfig {
     host: environment === 'railway' ? '0.0.0.0' : 'localhost',
     corsOrigins: [],
     enableIPv6: environment === 'railway' ? true : false,
+    allowPrivateNetworkAccess: environment === 'railway' ? true : false,
+    railwayInternalAccess: environment === 'railway' ? true : false,
   };
   
   // Override with explicit environment variables if provided
@@ -75,6 +81,8 @@ export function parseServerConfig(): ServerConfig {
     host: defaultConfig.host,
     corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : defaultConfig.corsOrigins,
     enableIPv6: process.env.ENABLE_IPV6 ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : defaultConfig.enableIPv6,
+    allowPrivateNetworkAccess: process.env.ALLOW_PRIVATE_NETWORK_ACCESS ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : defaultConfig.allowPrivateNetworkAccess,
+    railwayInternalAccess: process.env.RAILWAY_INTERNAL_ACCESS ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : defaultConfig.railwayInternalAccess,
   };
   
   return config;
@@ -135,7 +143,93 @@ export function getEnvironmentConfig(): EnvironmentConfig {
     ENABLE_IPV6: process.env.ENABLE_IPV6 ? process.env.ENABLE_IPV6.toLowerCase() === 'true' : undefined,
     IPV6_DUAL_STACK: process.env.IPV6_DUAL_STACK ? process.env.IPV6_DUAL_STACK.toLowerCase() === 'true' : undefined,
     IPV6_PREFER: process.env.IPV6_PREFER ? process.env.IPV6_PREFER.toLowerCase() === 'true' : undefined,
+    ALLOW_PRIVATE_NETWORK_ACCESS: process.env.ALLOW_PRIVATE_NETWORK_ACCESS ? process.env.ALLOW_PRIVATE_NETWORK_ACCESS.toLowerCase() === 'true' : undefined,
+    RAILWAY_INTERNAL_ACCESS: process.env.RAILWAY_INTERNAL_ACCESS ? process.env.RAILWAY_INTERNAL_ACCESS.toLowerCase() === 'true' : undefined,
     GMAIL_CREDENTIALS_PATH: process.env.GMAIL_CREDENTIALS_PATH,
     GMAIL_OAUTH_PATH: process.env.GMAIL_OAUTH_PATH,
   };
+}
+
+/**
+ * Generates private network CORS origins based on configuration
+ */
+export function generatePrivateNetworkOrigins(config: ServerConfig): string[] {
+  const origins: string[] = [];
+
+  if (config.allowPrivateNetworkAccess) {
+    // Add private network ranges (RFC 1918)
+    origins.push(
+      // 10.0.0.0/8
+      'http://10.*',
+      'https://10.*',
+      // 172.16.0.0/12
+      'http://172.16.*',
+      'https://172.16.*',
+      'http://172.17.*',
+      'https://172.17.*',
+      'http://172.18.*',
+      'https://172.18.*',
+      'http://172.19.*',
+      'https://172.19.*',
+      'http://172.20.*',
+      'https://172.20.*',
+      'http://172.21.*',
+      'https://172.21.*',
+      'http://172.22.*',
+      'https://172.22.*',
+      'http://172.23.*',
+      'https://172.23.*',
+      'http://172.24.*',
+      'https://172.24.*',
+      'http://172.25.*',
+      'https://172.25.*',
+      'http://172.26.*',
+      'https://172.26.*',
+      'http://172.27.*',
+      'https://172.27.*',
+      'http://172.28.*',
+      'https://172.28.*',
+      'http://172.29.*',
+      'https://172.29.*',
+      'http://172.30.*',
+      'https://172.30.*',
+      'http://172.31.*',
+      'https://172.31.*',
+      // 192.168.0.0/16
+      'http://192.168.*',
+      'https://192.168.*',
+      // Localhost and loopback
+      'http://localhost:*',
+      'https://localhost:*',
+      'http://127.0.0.1:*',
+      'https://127.0.0.1:*',
+      // IPv6 localhost
+      'http://[::1]:*',
+      'https://[::1]:*'
+    );
+  }
+
+  if (config.railwayInternalAccess) {
+    // Add Railway internal network patterns
+    origins.push(
+      'https://*.railway.app',
+      'https://*.up.railway.app',
+      'http://*.railway.internal',
+      'https://*.railway.internal'
+    );
+  }
+
+  return origins;
+}
+
+/**
+ * Merges configured CORS origins with generated private network origins
+ */
+export function getMergedCORSOrigins(config: ServerConfig): string[] {
+  const configuredOrigins = config.corsOrigins || [];
+  const privateNetworkOrigins = generatePrivateNetworkOrigins(config);
+  
+  // Combine and deduplicate origins
+  const allOrigins = [...configuredOrigins, ...privateNetworkOrigins];
+  return [...new Set(allOrigins)];
 }
