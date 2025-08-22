@@ -5,13 +5,13 @@
   - Configure health check endpoint, restart policy, and build settings
   - _Requirements: 1.4, 4.1, 4.4, 4.5_
 
-- [ ] 2. Update Dockerfile for Railway compatibility
+- [x] 2. Update Dockerfile for Railway compatibility
   - Modify Dockerfile to use Railway's PORT environment variable
   - Optimize Docker build process with multi-stage build for Railway
   - Add support for Railway-specific environment variables and caching
   - _Requirements: 1.1, 1.2, 1.3, 4.1, 4.2_
 
-- [ ] 3. Implement dual transport server architecture
+- [-] 3. Implement dual transport server architecture
 - [ ] 3.1 Create server configuration interface and environment detection
   - Define TypeScript interfaces for ServerConfig and NetworkConfig
   - Implement environment detection logic to determine runtime mode (local vs Railway)
