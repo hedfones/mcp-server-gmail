@@ -26,13 +26,13 @@ This design modifies the existing Gmail MCP server to support deployment on Rail
 **railway.toml Configuration**
 ```toml
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 
 [deploy]
 startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
-restartPolicyType = "on_failure"
+restartPolicyType = "ON_FAILURE"
 ```
 
 **Purpose**: Defines Railway-specific deployment configuration including build process, health checks, and restart policies.

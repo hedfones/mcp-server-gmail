@@ -1,0 +1,410 @@
+/**
+ * HTTP transport implementation for MCP server
+ * Wraps the existing MCP server functionality to work over HTTP
+ */
+
+import http from 'http';
+import { URL } from 'url';
+import { bindToOptimalNetwork, logNetworkConfiguration, detectNetworkStack, handleNetworkBindingError } from './network-utils.js';
+import { createNetworkConfig } from './config.js';
+
+/**
+ * HTTP Server Transport class that wraps MCP server functionality
+ */
+export class HttpServerTransport {
+  constructor(server, config) {
+    this.mcpServer = server;
+    this.config = config;
+    this.httpServer = null;
+    this.isRunning = false;
+  }
+
+  /**
+   * Starts the HTTP server with IPv6 dual-stack support
+   */
+  async start() {
+    if (this.isRunning) {
+      throw new Error('HTTP transport is already running');
+    }
+
+    try {
+      // Create network configuration
+      const networkConfig = createNetworkConfig(this.config);
+      
+      // Detect available network stacks
+      const stackInfo = await detectNetworkStack();
+      
+      // Create server factory function
+      const createServerFn = () => {
+        return http.createServer((req, res) => {
+          this.handleRequest(req, res);
+        });
+      };
+      
+      // Attempt to bind to optimal network configuration
+      const bindResult = await bindToOptimalNetwork(networkConfig, createServerFn);
+      
+      if (!bindResult.success) {
+        const enhancedError = handleNetworkBindingError(
+          bindResult.error || new Error('Unknown network binding error'),
+          networkConfig,
+          stackInfo
+        );
+        console.error('Network binding failed with detailed diagnostics');
+        throw enhancedError;
+      }
+      
+      // Store the server instance
+      this.httpServer = bindResult.server;
+      
+      // Log network configuration for debugging
+      logNetworkConfiguration(bindResult, networkConfig, stackInfo);
+      
+      this.isRunning = true;
+      this.bindResult = bindResult;
+      
+      console.log(`HTTP transport successfully bound to ${bindResult.address}:${bindResult.port} (${bindResult.family})`);
+      
+    } catch (error) {
+      console.error('Failed to start HTTP transport:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stops the HTTP server
+   */
+  async stop() {
+    if (!this.isRunning || !this.httpServer) {
+      return;
+    }
+
+    return new Promise((resolve) => {
+      this.httpServer.close(() => {
+        this.isRunning = false;
+        console.log('HTTP transport stopped');
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Handles incoming HTTP requests
+   */
+  async handleRequest(req, res) {
+    // Set CORS headers
+    this.setCorsHeaders(res);
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Parse URL to determine endpoint
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    
+    if (url.pathname === '/health') {
+      // Health check allows GET requests
+      if (req.method !== 'GET' && req.method !== 'POST') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method not allowed for health check' }));
+        return;
+      }
+      await this.handleHealthCheck(req, res);
+    } else if (url.pathname === '/mcp') {
+      // MCP protocol requires POST requests
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method not allowed. Use POST for MCP requests.' }));
+        return;
+      }
+      await this.handleMcpRequest(req, res);
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Endpoint not found' }));
+    }
+  }
+
+  /**
+   * Handles MCP protocol requests over HTTP
+   */
+  async handleMcpRequest(req, res) {
+    try {
+      // Read request body
+      const body = await this.readRequestBody(req);
+      
+      // Parse JSON request
+      let mcpRequest;
+      try {
+        mcpRequest = JSON.parse(body);
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON in request body' }));
+        return;
+      }
+
+      // Validate MCP request structure
+      if (!mcpRequest.method || !mcpRequest.params) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid MCP request format' }));
+        return;
+      }
+
+      // Process the request through the MCP server
+      const mcpResponse = await this.processMcpRequest(mcpRequest);
+
+      // Send response
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(mcpResponse));
+
+    } catch (error) {
+      console.error('Error handling MCP request:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        error: 'Internal server error',
+        message: error.message 
+      }));
+    }
+  }
+
+  /**
+   * Processes MCP requests by routing them to the appropriate server handlers
+   */
+  async processMcpRequest(request) {
+    try {
+      // Route the request based on method
+      switch (request.method) {
+        case 'tools/list':
+          return await this.mcpServer.request(
+            { method: 'tools/list', params: request.params },
+            { method: 'tools/list', params: request.params }
+          );
+        
+        case 'tools/call':
+          return await this.mcpServer.request(
+            { method: 'tools/call', params: request.params },
+            { method: 'tools/call', params: request.params }
+          );
+        
+        default:
+          return {
+            error: {
+              code: -32601,
+              message: `Method not found: ${request.method}`
+            }
+          };
+      }
+    } catch (error) {
+      return {
+        error: {
+          code: -32603,
+          message: 'Internal error',
+          data: error.message
+        }
+      };
+    }
+  }
+
+  /**
+   * Handles health check requests
+   */
+  async handleHealthCheck(req, res) {
+    const healthStatus = await this.getHealthStatus();
+    
+    const statusCode = healthStatus.status === 'healthy' ? 200 : 503;
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(healthStatus));
+  }
+
+  /**
+   * Gets comprehensive health status including Gmail API connectivity
+   */
+  async getHealthStatus() {
+    const timestamp = new Date().toISOString();
+    let overallStatus = 'healthy';
+    const checks = {};
+
+    // Server status
+    checks.server = {
+      status: 'healthy',
+      mode: this.config.mode,
+      port: this.bindResult?.port || this.config.port,
+      address: this.bindResult?.address || 'unknown',
+      family: this.bindResult?.family || 'unknown',
+      ipv6: this.config.enableIPv6,
+      dualStack: this.bindResult?.family === 'IPv6' && this.bindResult?.address === '::'
+    };
+
+    // MCP server status
+    checks.mcp = {
+      status: !!this.mcpServer ? 'healthy' : 'unhealthy',
+      available: !!this.mcpServer,
+      transport: 'http'
+    };
+
+    // Gmail API connectivity check
+    checks.gmail = await this.checkGmailConnectivity();
+    
+    // Credential status check
+    checks.credentials = await this.checkCredentialStatus();
+    
+    // Network health check
+    checks.network = await this.checkNetworkHealth();
+
+    // Determine overall status
+    const allChecks = Object.values(checks);
+    if (allChecks.some(check => check.status === 'unhealthy')) {
+      overallStatus = 'unhealthy';
+    } else if (allChecks.some(check => check.status === 'degraded')) {
+      overallStatus = 'degraded';
+    }
+
+    return {
+      status: overallStatus,
+      timestamp,
+      checks
+    };
+  }
+
+  /**
+   * Checks network configuration health
+   */
+  async checkNetworkHealth() {
+    try {
+      const stackInfo = await detectNetworkStack();
+      
+      return {
+        status: 'healthy',
+        details: {
+          ipv4Available: stackInfo.ipv4Available,
+          ipv6Available: stackInfo.ipv6Available,
+          preferredStack: stackInfo.preferredStack,
+          currentBinding: this.bindResult ? {
+            address: this.bindResult.address,
+            port: this.bindResult.port,
+            family: this.bindResult.family
+          } : null
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Checks Gmail API connectivity
+   */
+  async checkGmailConnectivity() {
+    try {
+      // This is a basic check - in a real implementation, you'd want to
+      // make a lightweight API call to verify connectivity
+      // For now, we'll just check if the oauth2Client is available
+      
+      // Import path and fs to check for credentials
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      const CONFIG_DIR = path.join(os.homedir(), '.gmail-mcp');
+      const CREDENTIALS_PATH = process.env.GMAIL_CREDENTIALS_PATH || path.join(CONFIG_DIR, 'credentials.json');
+      
+      if (fs.existsSync(CREDENTIALS_PATH)) {
+        return {
+          status: 'healthy',
+          message: 'Gmail credentials available'
+        };
+      } else {
+        return {
+          status: 'degraded',
+          message: 'Gmail credentials not found, authentication may be required'
+        };
+      }
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        message: `Gmail connectivity check failed: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Checks credential status
+   */
+  async checkCredentialStatus() {
+    try {
+      // Import path and fs to check for OAuth keys
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      const CONFIG_DIR = path.join(os.homedir(), '.gmail-mcp');
+      const OAUTH_PATH = process.env.GMAIL_OAUTH_PATH || path.join(CONFIG_DIR, 'gcp-oauth.keys.json');
+      
+      const hasOAuthKeys = fs.existsSync(OAUTH_PATH);
+      const hasCredentials = fs.existsSync(process.env.GMAIL_CREDENTIALS_PATH || path.join(CONFIG_DIR, 'credentials.json'));
+      
+      if (hasOAuthKeys && hasCredentials) {
+        return {
+          status: 'healthy',
+          message: 'All credentials available'
+        };
+      } else if (hasOAuthKeys) {
+        return {
+          status: 'degraded',
+          message: 'OAuth keys available, user credentials missing'
+        };
+      } else {
+        return {
+          status: 'unhealthy',
+          message: 'OAuth keys missing'
+        };
+      }
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        message: `Credential check failed: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Sets CORS headers for cross-origin requests
+   */
+  setCorsHeaders(res) {
+    // Allow configured origins or default to private network ranges
+    const allowedOrigins = this.config.corsOrigins && this.config.corsOrigins.length > 0
+      ? this.config.corsOrigins
+      : ['http://localhost:*', 'http://127.0.0.1:*', 'http://10.*', 'http://172.16.*', 'http://192.168.*'];
+
+    res.setHeader('Access-Control-Allow-Origin', '*'); // For now, allow all origins
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  }
+
+  /**
+   * Reads the request body from an HTTP request
+   */
+  readRequestBody(req) {
+    return new Promise((resolve, reject) => {
+      let body = '';
+      
+      req.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+      
+      req.on('end', () => {
+        resolve(body);
+      });
+      
+      req.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+}
