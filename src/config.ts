@@ -114,6 +114,89 @@ export function createNetworkConfig(serverConfig: ServerConfig): NetworkConfig {
 }
 
 /**
+ * Validates required environment variables for Railway deployment
+ */
+export function validateEnvironmentVariables(): { isValid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const environment = detectEnvironment();
+  
+  // Check Railway-specific requirements
+  if (environment === 'railway') {
+    // PORT is automatically set by Railway, but validate it exists
+    if (!process.env.PORT) {
+      errors.push('PORT environment variable is required for Railway deployment');
+    } else {
+      const port = parseInt(process.env.PORT, 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        errors.push(`Invalid PORT value: ${process.env.PORT}. Must be a number between 1 and 65535`);
+      }
+    }
+    
+    // Warn about missing optional Railway variables
+    if (!process.env.RAILWAY_ENVIRONMENT) {
+      warnings.push('RAILWAY_ENVIRONMENT not set - this may indicate the app is not running on Railway');
+    }
+    
+    if (!process.env.RAILWAY_SERVICE_NAME) {
+      warnings.push('RAILWAY_SERVICE_NAME not set - service identification may be limited');
+    }
+  }
+  
+  // Check Gmail-specific requirements
+  const gmailCredentialsPath = process.env.GMAIL_CREDENTIALS_PATH;
+  const gmailOAuthPath = process.env.GMAIL_OAUTH_PATH;
+  
+  // These are optional but warn if not set
+  if (!gmailCredentialsPath && !gmailOAuthPath) {
+    warnings.push('Gmail credential paths not specified - using default locations in ~/.gmail-mcp/');
+  }
+  
+  // Validate CORS origins format if provided
+  if (process.env.CORS_ORIGINS) {
+    const origins = process.env.CORS_ORIGINS.split(',').map(s => s.trim());
+    const invalidOrigins = origins.filter(origin => {
+      // Basic validation for origin format
+      return !origin || (!origin.startsWith('http://') && !origin.startsWith('https://') && !origin.includes('*'));
+    });
+    
+    if (invalidOrigins.length > 0) {
+      errors.push(`Invalid CORS origins detected: ${invalidOrigins.join(', ')}. Origins must start with http:// or https:// or contain wildcards`);
+    }
+  }
+  
+  // Validate boolean environment variables
+  const booleanVars = [
+    'ENABLE_IPV6',
+    'IPV6_DUAL_STACK', 
+    'IPV6_PREFER',
+    'ALLOW_PRIVATE_NETWORK_ACCESS',
+    'RAILWAY_INTERNAL_ACCESS'
+  ];
+  
+  for (const varName of booleanVars) {
+    const value = process.env[varName];
+    if (value && !['true', 'false'].includes(value.toLowerCase())) {
+      errors.push(`Invalid boolean value for ${varName}: ${value}. Must be 'true' or 'false'`);
+    }
+  }
+  
+  // Validate server mode if explicitly set
+  if (process.env.MCP_SERVER_MODE) {
+    const mode = process.env.MCP_SERVER_MODE;
+    if (!['stdio', 'http', 'dual'].includes(mode)) {
+      errors.push(`Invalid MCP_SERVER_MODE: ${mode}. Must be 'stdio', 'http', or 'dual'`);
+    }
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+/**
  * Validates the server configuration and throws errors for invalid settings
  */
 export function validateServerConfig(config: ServerConfig): void {
@@ -232,4 +315,125 @@ export function getMergedCORSOrigins(config: ServerConfig): string[] {
   // Combine and deduplicate origins
   const allOrigins = [...configuredOrigins, ...privateNetworkOrigins];
   return [...new Set(allOrigins)];
+}
+
+/**
+ * Provides configuration guidance and default values for local development
+ */
+export function getConfigurationGuidance(): {
+  localDefaults: Record<string, string>;
+  railwayDefaults: Record<string, string>;
+  requiredForRailway: string[];
+  optionalForRailway: string[];
+  examples: Record<string, string>;
+} {
+  return {
+    localDefaults: {
+      MCP_SERVER_MODE: 'stdio',
+      ENABLE_IPV6: 'false',
+      ALLOW_PRIVATE_NETWORK_ACCESS: 'false',
+      RAILWAY_INTERNAL_ACCESS: 'false'
+    },
+    railwayDefaults: {
+      MCP_SERVER_MODE: 'http',
+      ENABLE_IPV6: 'true',
+      IPV6_DUAL_STACK: 'true',
+      IPV6_PREFER: 'true',
+      ALLOW_PRIVATE_NETWORK_ACCESS: 'true',
+      RAILWAY_INTERNAL_ACCESS: 'true'
+    },
+    requiredForRailway: [
+      'PORT' // Automatically set by Railway
+    ],
+    optionalForRailway: [
+      'MCP_SERVER_MODE',
+      'CORS_ORIGINS',
+      'ENABLE_IPV6',
+      'IPV6_DUAL_STACK',
+      'IPV6_PREFER',
+      'ALLOW_PRIVATE_NETWORK_ACCESS',
+      'RAILWAY_INTERNAL_ACCESS',
+      'GMAIL_CREDENTIALS_PATH',
+      'GMAIL_OAUTH_PATH'
+    ],
+    examples: {
+      CORS_ORIGINS: 'https://myapp.example.com,http://localhost:3000,https://*.railway.app',
+      MCP_SERVER_MODE: 'dual',
+      ENABLE_IPV6: 'true',
+      GMAIL_CREDENTIALS_PATH: '/app/credentials/gmail-credentials.json',
+      GMAIL_OAUTH_PATH: '/app/credentials/gcp-oauth.keys.json'
+    }
+  };
+}
+
+/**
+ * Logs configuration information for debugging and setup guidance
+ */
+export function logConfigurationInfo(config: ServerConfig): void {
+  const environment = detectEnvironment();
+  const envValidation = validateEnvironmentVariables();
+  
+  console.log('\n=== Server Configuration ===');
+  console.log(`Environment: ${environment}`);
+  console.log(`Mode: ${config.mode}`);
+  console.log(`Port: ${config.port}`);
+  console.log(`Host: ${config.host}`);
+  console.log(`IPv6 Enabled: ${config.enableIPv6}`);
+  console.log(`Private Network Access: ${config.allowPrivateNetworkAccess}`);
+  console.log(`Railway Internal Access: ${config.railwayInternalAccess}`);
+  console.log(`CORS Origins: ${config.corsOrigins?.length || 0} configured`);
+  
+  // Log warnings
+  if (envValidation.warnings.length > 0) {
+    console.log('\n=== Configuration Warnings ===');
+    envValidation.warnings.forEach(warning => console.warn(`⚠️  ${warning}`));
+  }
+  
+  // Log configuration guidance for local development
+  if (environment === 'local') {
+    console.log('\n=== Local Development Setup ===');
+    console.log('For Railway deployment, consider setting these environment variables:');
+    const guidance = getConfigurationGuidance();
+    Object.entries(guidance.railwayDefaults).forEach(([key, value]) => {
+      console.log(`  ${key}=${value}`);
+    });
+  }
+  
+  console.log('================================\n');
+}
+
+/**
+ * Enhanced configuration parsing with validation and error handling
+ */
+export function parseAndValidateServerConfig(): ServerConfig {
+  // First validate environment variables
+  const envValidation = validateEnvironmentVariables();
+  
+  if (!envValidation.isValid) {
+    console.error('\n=== Configuration Errors ===');
+    envValidation.errors.forEach(error => console.error(`❌ ${error}`));
+    console.error('================================\n');
+    
+    const guidance = getConfigurationGuidance();
+    console.error('Configuration guidance:');
+    console.error('Required for Railway:', guidance.requiredForRailway.join(', '));
+    console.error('Optional variables:', guidance.optionalForRailway.join(', '));
+    console.error('\nExample values:');
+    Object.entries(guidance.examples).forEach(([key, value]) => {
+      console.error(`  ${key}=${value}`);
+    });
+    
+    throw new Error(`Configuration validation failed with ${envValidation.errors.length} error(s)`);
+  }
+  
+  // Parse configuration
+  const config = parseServerConfig();
+  
+  // Validate parsed configuration
+  validateServerConfig(config);
+  
+  // Log configuration info
+  logConfigurationInfo(config);
+  
+  return config;
 }

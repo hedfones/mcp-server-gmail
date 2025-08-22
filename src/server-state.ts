@@ -2,24 +2,32 @@
  * Server state management for dual transport architecture
  */
 
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { HttpServerTransport } from "./http-transport.js";
+import { ServerConfig } from "./config.js";
 
 /**
  * Server state management class
  */
 export class ServerState {
-  constructor(mcpServer, config) {
+  private mcpServer: Server;
+  private config: ServerConfig;
+  private transports: {
+    stdio?: StdioServerTransport;
+    http?: HttpServerTransport;
+  } = {};
+  private isHealthy: boolean = false;
+
+  constructor(mcpServer: Server, config: ServerConfig) {
     this.mcpServer = mcpServer;
     this.config = config;
-    this.transports = {};
-    this.isHealthy = false;
   }
 
   /**
    * Initializes the appropriate transports based on configuration
    */
-  async initialize() {
+  async initialize(): Promise<void> {
     try {
       switch (this.config.mode) {
         case 'stdio':
@@ -50,7 +58,7 @@ export class ServerState {
   /**
    * Initializes stdio transport
    */
-  async initializeStdioTransport() {
+  private async initializeStdioTransport(): Promise<void> {
     console.log('Initializing stdio transport...');
     this.transports.stdio = new StdioServerTransport();
     
@@ -62,7 +70,7 @@ export class ServerState {
   /**
    * Initializes HTTP transport
    */
-  async initializeHttpTransport() {
+  private async initializeHttpTransport(): Promise<void> {
     console.log('Initializing HTTP transport...');
     this.transports.http = new HttpServerTransport(this.mcpServer, this.config);
     
@@ -74,7 +82,7 @@ export class ServerState {
   /**
    * Gracefully shuts down all transports
    */
-  async shutdown() {
+  async shutdown(): Promise<void> {
     console.log('Shutting down server...');
     
     // Stop HTTP transport if running
@@ -91,13 +99,26 @@ export class ServerState {
   /**
    * Gets the current server status
    */
-  getStatus() {
+  getStatus(): {
+    mode: string;
+    healthy: boolean;
+    transports: {
+      stdio: boolean;
+      http: boolean;
+    };
+    config: {
+      port?: number;
+      host?: string;
+      ipv6?: boolean;
+      corsOrigins?: string[];
+    };
+  } {
     return {
       mode: this.config.mode,
       healthy: this.isHealthy,
       transports: {
         stdio: !!this.transports.stdio,
-        http: !!this.transports.http && this.transports.http.isRunning
+        http: !!this.transports.http && (this.transports.http as any).isRunning
       },
       config: {
         port: this.config.port,
@@ -111,8 +132,8 @@ export class ServerState {
   /**
    * Handles graceful shutdown on process signals
    */
-  setupGracefulShutdown() {
-    const shutdown = async (signal) => {
+  setupGracefulShutdown(): void {
+    const shutdown = async (signal: string) => {
       console.log(`Received ${signal}, shutting down gracefully...`);
       try {
         await this.shutdown();

@@ -5,19 +5,42 @@
 
 import http from 'http';
 import { URL } from 'url';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { bindToOptimalNetwork, logNetworkConfiguration, detectNetworkStack, handleNetworkBindingError } from './network-utils.js';
-import { createNetworkConfig, getMergedCORSOrigins } from './config.js';
+import { createNetworkConfig, getMergedCORSOrigins, ServerConfig } from './config.js';
 import { createCORSMiddleware } from './cors-middleware.js';
+
+interface BindResult {
+  success: boolean;
+  server?: http.Server;
+  address?: string;
+  port?: number;
+  family?: string;
+  error?: Error;
+}
+
+interface CORSMiddleware {
+  handlePreflightRequest(req: http.IncomingMessage, res: http.ServerResponse): boolean;
+  setCORSHeaders(req: http.IncomingMessage, res: http.ServerResponse): { allowed: boolean; reason?: string };
+  getConfig(): any;
+  validateOrigins(origins: string[]): { allowed: string[]; rejected: string[] };
+  updateConfig(config: { origins: string[] }): void;
+}
 
 /**
  * HTTP Server Transport class that wraps MCP server functionality
  */
 export class HttpServerTransport {
-  constructor(server, config) {
+  private mcpServer: Server;
+  private config: ServerConfig;
+  private httpServer: http.Server | null = null;
+  public isRunning: boolean = false;
+  private corsMiddleware: CORSMiddleware;
+  private bindResult?: BindResult;
+
+  constructor(server: Server, config: ServerConfig) {
     this.mcpServer = server;
     this.config = config;
-    this.httpServer = null;
-    this.isRunning = false;
     
     // Initialize CORS middleware with merged origins (configured + private network)
     const mergedOrigins = getMergedCORSOrigins(config);
@@ -32,7 +55,7 @@ export class HttpServerTransport {
   /**
    * Starts the HTTP server with IPv6 dual-stack support
    */
-  async start() {
+  async start(): Promise<void> {
     if (this.isRunning) {
       throw new Error('HTTP transport is already running');
     }
@@ -65,7 +88,7 @@ export class HttpServerTransport {
       }
       
       // Store the server instance
-      this.httpServer = bindResult.server;
+      this.httpServer = bindResult.server!;
       
       // Log network configuration for debugging
       logNetworkConfiguration(bindResult, networkConfig, stackInfo);
@@ -84,13 +107,13 @@ export class HttpServerTransport {
   /**
    * Stops the HTTP server
    */
-  async stop() {
+  async stop(): Promise<void> {
     if (!this.isRunning || !this.httpServer) {
       return;
     }
 
     return new Promise((resolve) => {
-      this.httpServer.close(() => {
+      this.httpServer!.close(() => {
         this.isRunning = false;
         console.log('HTTP transport stopped');
         resolve();
@@ -101,7 +124,7 @@ export class HttpServerTransport {
   /**
    * Handles incoming HTTP requests
    */
-  async handleRequest(req, res) {
+  private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     // Handle CORS preflight requests first
     if (this.corsMiddleware.handlePreflightRequest(req, res)) {
       return;
@@ -125,7 +148,7 @@ export class HttpServerTransport {
     }
 
     // Parse URL to determine endpoint
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const url = new URL(req.url!, `http://${req.headers.host}`);
     
     if (url.pathname === '/health') {
       // Health check allows GET requests
@@ -152,13 +175,13 @@ export class HttpServerTransport {
   /**
    * Handles MCP protocol requests over HTTP
    */
-  async handleMcpRequest(req, res) {
+  private async handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     try {
       // Read request body
       const body = await this.readRequestBody(req);
       
       // Parse JSON request
-      let mcpRequest;
+      let mcpRequest: any;
       try {
         mcpRequest = JSON.parse(body);
       } catch (error) {
@@ -181,7 +204,7 @@ export class HttpServerTransport {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(mcpResponse));
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error handling MCP request:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
@@ -194,18 +217,18 @@ export class HttpServerTransport {
   /**
    * Processes MCP requests by routing them to the appropriate server handlers
    */
-  async processMcpRequest(request) {
+  private async processMcpRequest(request: any): Promise<any> {
     try {
       // Route the request based on method
       switch (request.method) {
         case 'tools/list':
-          return await this.mcpServer.request(
+          return await (this.mcpServer as any).request(
             { method: 'tools/list', params: request.params },
             { method: 'tools/list', params: request.params }
           );
         
         case 'tools/call':
-          return await this.mcpServer.request(
+          return await (this.mcpServer as any).request(
             { method: 'tools/call', params: request.params },
             { method: 'tools/call', params: request.params }
           );
@@ -218,7 +241,7 @@ export class HttpServerTransport {
             }
           };
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         error: {
           code: -32603,
@@ -232,7 +255,7 @@ export class HttpServerTransport {
   /**
    * Handles health check requests
    */
-  async handleHealthCheck(req, res) {
+  private async handleHealthCheck(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const healthStatus = await this.getHealthStatus();
     
     const statusCode = healthStatus.status === 'healthy' ? 200 : 503;
@@ -243,10 +266,10 @@ export class HttpServerTransport {
   /**
    * Gets comprehensive health status including Gmail API connectivity
    */
-  async getHealthStatus() {
+  private async getHealthStatus(): Promise<any> {
     const timestamp = new Date().toISOString();
     let overallStatus = 'healthy';
-    const checks = {};
+    const checks: any = {};
 
     // Server status
     checks.server = {
@@ -280,9 +303,9 @@ export class HttpServerTransport {
 
     // Determine overall status
     const allChecks = Object.values(checks);
-    if (allChecks.some(check => check.status === 'unhealthy')) {
+    if (allChecks.some((check: any) => check.status === 'unhealthy')) {
       overallStatus = 'unhealthy';
-    } else if (allChecks.some(check => check.status === 'degraded')) {
+    } else if (allChecks.some((check: any) => check.status === 'degraded')) {
       overallStatus = 'degraded';
     }
 
@@ -296,7 +319,7 @@ export class HttpServerTransport {
   /**
    * Checks network configuration health
    */
-  async checkNetworkHealth() {
+  private async checkNetworkHealth(): Promise<any> {
     try {
       const stackInfo = await detectNetworkStack();
       
@@ -313,7 +336,7 @@ export class HttpServerTransport {
           } : null
         }
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         status: 'unhealthy',
         error: error.message
@@ -324,7 +347,7 @@ export class HttpServerTransport {
   /**
    * Checks Gmail API connectivity
    */
-  async checkGmailConnectivity() {
+  private async checkGmailConnectivity(): Promise<any> {
     try {
       // This is a basic check - in a real implementation, you'd want to
       // make a lightweight API call to verify connectivity
@@ -349,7 +372,7 @@ export class HttpServerTransport {
           message: 'Gmail credentials not found, authentication may be required'
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         status: 'unhealthy',
         message: `Gmail connectivity check failed: ${error.message}`
@@ -360,7 +383,7 @@ export class HttpServerTransport {
   /**
    * Checks credential status
    */
-  async checkCredentialStatus() {
+  private async checkCredentialStatus(): Promise<any> {
     try {
       // Import path and fs to check for OAuth keys
       const fs = await import('fs');
@@ -389,7 +412,7 @@ export class HttpServerTransport {
           message: 'OAuth keys missing'
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         status: 'unhealthy',
         message: `Credential check failed: ${error.message}`
@@ -400,7 +423,7 @@ export class HttpServerTransport {
   /**
    * Checks CORS configuration health
    */
-  checkCORSConfiguration() {
+  private checkCORSConfiguration(): any {
     try {
       const corsConfig = this.corsMiddleware.getConfig();
       const originCount = corsConfig.origins.length;
@@ -429,7 +452,7 @@ export class HttpServerTransport {
           }
         }
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         status: 'unhealthy',
         error: error.message
@@ -440,14 +463,14 @@ export class HttpServerTransport {
   /**
    * Gets the CORS middleware instance for external access
    */
-  getCORSMiddleware() {
+  getCORSMiddleware(): CORSMiddleware {
     return this.corsMiddleware;
   }
 
   /**
    * Updates CORS configuration at runtime
    */
-  updateCORSConfig(newOrigins) {
+  updateCORSConfig(newOrigins: string[]): void {
     if (newOrigins && Array.isArray(newOrigins)) {
       this.corsMiddleware.updateConfig({ origins: newOrigins });
       console.log('CORS configuration updated with new origins:', newOrigins);
@@ -457,7 +480,7 @@ export class HttpServerTransport {
   /**
    * Reads the request body from an HTTP request
    */
-  readRequestBody(req) {
+  private readRequestBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
       let body = '';
       

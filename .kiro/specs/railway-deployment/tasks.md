@@ -56,14 +56,14 @@
   - Implement origin validation logic with proper error responses
   - _Requirements: 5.3_
 
-- [ ] 6. Update server initialization and startup logic
-- [ ] 6.1 Modify main server entry point for dual transport support
+- [x] 6. Update server initialization and startup logic
+- [x] 6.1 Modify main server entry point for dual transport support
   - Update main() function to initialize both stdio and HTTP transports based on environment
   - Add graceful shutdown handling for both transport types
   - Implement proper error handling and logging for startup failures
   - _Requirements: 1.1, 3.1, 3.4_
 
-- [ ] 6.2 Add environment-based configuration loading
+- [x] 6.2 Add environment-based configuration loading
   - Implement configuration loading from Railway environment variables
   - Add validation for required environment variables with clear error messages
   - Create default configuration values for local development mode

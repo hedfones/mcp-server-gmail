@@ -19,6 +19,8 @@ import os from 'os';
 import {createEmailMessage, createEmailWithNodemailer} from "./utl.js";
 import { createLabel, updateLabel, deleteLabel, listLabels, findLabelByName, getOrCreateLabel, GmailLabel } from "./label-manager.js";
 import { createFilter, listFilters, getFilter, deleteFilter, filterTemplates, GmailFilterCriteria, GmailFilterAction } from "./filter-manager.js";
+import { parseAndValidateServerConfig, detectEnvironment } from "./config.js";
+import { ServerState } from "./server-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1199,11 +1201,37 @@ async function main() {
         }
     });
 
-    const transport = new StdioServerTransport();
-    server.connect(transport);
+    // Parse and validate server configuration with enhanced error handling
+    const serverConfig = parseAndValidateServerConfig();
+    
+    console.log(`Starting server in ${serverConfig.mode} mode (environment: ${detectEnvironment()})`);
+    
+    // Initialize server state with dual transport support
+    const serverState = new ServerState(server, serverConfig);
+    
+    // Setup graceful shutdown handling
+    serverState.setupGracefulShutdown();
+    
+    try {
+        // Initialize transports based on configuration
+        await serverState.initialize();
+        
+        console.log('Server started successfully');
+        console.log('Server status:', JSON.stringify(serverState.getStatus(), null, 2));
+        
+        // Keep the process alive for HTTP mode
+        if (serverConfig.mode === 'http' || serverConfig.mode === 'dual') {
+            console.log('Server is running. Press Ctrl+C to stop.');
+        }
+        
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        await serverState.shutdown();
+        throw error;
+    }
 }
 
 main().catch((error) => {
-    console.error('Server error:', error);
+    console.error('Server startup error:', error);
     process.exit(1);
 });
