@@ -213,9 +213,15 @@ export class HttpServerTransport {
             // Process the request through the MCP server
             const mcpResponse = await this.processMcpRequest(mcpRequest);
 
-            // Send response
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(mcpResponse));
+            // Send response (only if there is a response to send)
+            if (mcpResponse !== null) {
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify(mcpResponse));
+            } else {
+                // For notifications that don't need a response
+                res.writeHead(204); // No Content
+                res.end();
+            }
         } catch (error: any) {
             console.error("Error handling MCP request:", error);
             res.writeHead(500, { "Content-Type": "application/json" });
@@ -233,13 +239,18 @@ export class HttpServerTransport {
      */
     private async processMcpRequest(request: any): Promise<any> {
         try {
+            // Ensure proper JSON-RPC structure
+            const response = {
+                jsonrpc: "2.0",
+                id: request.id,
+            };
+
             // Route the request based on method
             switch (request.method) {
                 case "initialize":
                     // Handle MCP initialization
                     return {
-                        jsonrpc: "2.0",
-                        id: request.id,
+                        ...response,
                         result: {
                             protocolVersion: "2024-11-05",
                             capabilities: {
@@ -252,22 +263,52 @@ export class HttpServerTransport {
                         },
                     };
 
+                case "notifications/initialized":
+                    // Handle initialization notification (notifications don't have responses in JSON-RPC)
+                    // Return null to indicate no response should be sent
+                    return null;
+
                 case "tools/list":
-                    return await (this.mcpServer as any).request(
-                        { method: "tools/list", params: request.params },
-                        { method: "tools/list", params: request.params },
-                    );
+                    // Get tools from the MCP server's request handlers
+                    try {
+                        const toolsResponse = await this.handleToolsList();
+                        return {
+                            ...response,
+                            result: toolsResponse,
+                        };
+                    } catch (error: any) {
+                        return {
+                            ...response,
+                            error: {
+                                code: -32603,
+                                message: "Failed to list tools",
+                                data: error.message,
+                            },
+                        };
+                    }
 
                 case "tools/call":
-                    return await (this.mcpServer as any).request(
-                        { method: "tools/call", params: request.params },
-                        { method: "tools/call", params: request.params },
-                    );
+                    // Handle tool calls
+                    try {
+                        const toolResult = await this.handleToolCall(request.params);
+                        return {
+                            ...response,
+                            result: toolResult,
+                        };
+                    } catch (error: any) {
+                        return {
+                            ...response,
+                            error: {
+                                code: -32603,
+                                message: "Tool call failed",
+                                data: error.message,
+                            },
+                        };
+                    }
 
                 default:
                     return {
-                        jsonrpc: "2.0",
-                        id: request.id,
+                        ...response,
                         error: {
                             code: -32601,
                             message: `Method not found: ${request.method}`,
@@ -276,12 +317,67 @@ export class HttpServerTransport {
             }
         } catch (error: any) {
             return {
+                jsonrpc: "2.0",
+                id: request.id,
                 error: {
                     code: -32603,
                     message: "Internal error",
                     data: error.message,
                 },
             };
+        }
+    }
+
+    /**
+     * Handles tools/list requests by accessing the server's registered tools
+     */
+    private async handleToolsList(): Promise<any> {
+        try {
+            // Access the server's request handlers to get the tools list
+            const handlers = (this.mcpServer as any)._requestHandlers;
+            const listToolsHandler = handlers?.get("tools/list");
+            
+            if (listToolsHandler) {
+                // Create a proper request object that matches the expected schema
+                const request = {
+                    method: "tools/list",
+                    params: {}
+                };
+                const result = await listToolsHandler(request);
+                return result;
+            }
+            
+            // Fallback: return empty tools list
+            return { tools: [] };
+        } catch (error: any) {
+            console.error("Error in handleToolsList:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Handles tools/call requests by routing to the appropriate tool handler
+     */
+    private async handleToolCall(params: any): Promise<any> {
+        try {
+            // Access the server's request handlers to get the tool call handler
+            const handlers = (this.mcpServer as any)._requestHandlers;
+            const callToolHandler = handlers?.get("tools/call");
+            
+            if (callToolHandler) {
+                // Create a proper request object that matches the expected schema
+                const request = {
+                    method: "tools/call",
+                    params: params
+                };
+                const result = await callToolHandler(request);
+                return result;
+            }
+            
+            throw new Error("Tool call handler not found");
+        } catch (error: any) {
+            console.error("Error in handleToolCall:", error);
+            throw error;
         }
     }
 
