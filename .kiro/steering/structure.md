@@ -1,70 +1,68 @@
-# Project Structure
+# Project Structure & Organization
 
 ## Root Directory
 
-- **src/**: Source code directory
-- **dist/**: Compiled TypeScript output (generated)
-- **package.json**: Project configuration and dependencies
-- **tsconfig.json**: TypeScript compiler configuration
-- **Dockerfile**: Container configuration
-- **docker-compose.yml**: Docker orchestration
-- **mcp-config.json**: Local MCP server configuration
-- **smithery.yaml**: Smithery deployment configuration
+- **Configuration Files**: Package management, TypeScript, Docker, and deployment configs
+- **Documentation**: README.md, CORS-CONFIG.md, filter-examples.md, llms-install.md
+- **Build Artifacts**: `dist/` (compiled output), `node_modules/` (dependencies)
 
 ## Source Code Organization (`src/`)
 
 ### Core Files
+- **`index.ts`**: Main entry point, server setup, tool handlers, and Gmail API integration
+- **`config.ts`**: Environment detection, server configuration, and Railway deployment settings
+- **`server-state.ts`**: Server state management and runtime configuration
 
-- **index.ts**: Main server entry point and tool handlers
-  - MCP server setup and configuration
-  - OAuth2 authentication flow
-  - All tool implementations (send_email, read_email, etc.)
-  - Schema definitions using Zod
-  - Gmail API integration
+### Feature Modules
+- **`cors-middleware.ts`**: CORS handling for HTTP transport with private network support
+- **`http-transport.ts`**: HTTP server implementation for cloud deployments
+- **`label-manager.ts`**: Gmail label operations (create, update, delete, list)
+- **`filter-manager.ts`**: Gmail filter management with template system
+- **`utl.ts`**: Email creation utilities and RFC822 message formatting
+- **`network-utils.ts`**: Network configuration and IPv6 support
 
-### Specialized Modules
+### Testing (`src/__tests__/`)
+- **Integration Tests**: `dual-transport.integration.test.ts`, `http-transport.integration.test.ts`
+- **Unit Tests**: `config.test.ts`, `cors-middleware.test.ts`, `network-utils.test.ts`
+- **Test Coverage**: Excludes evals, config files, and test files themselves
 
-- **label-manager.ts**: Gmail label operations
-  - Create, update, delete labels
-  - Label visibility management
-  - Label search and organization utilities
+### Evaluation (`src/evals/`)
+- **`evals.ts`**: MCP server evaluation and testing framework integration
 
-- **filter-manager.ts**: Gmail filter operations
-  - Filter creation with custom criteria
-  - Pre-built filter templates
-  - Filter management (list, get, delete)
+## Configuration Structure
 
-- **utl.ts**: Utility functions
-  - Email message composition
-  - MIME type handling
-  - Email validation
-  - Nodemailer integration for attachments
+### Kiro Configuration (`.kiro/`)
+- **Steering Rules**: `.kiro/steering/` - AI assistant guidance documents
+- **Specifications**: `.kiro/specs/` - Feature specifications and design documents
 
-### Evaluation System (`src/evals/`)
+### Deployment Configuration
+- **Docker**: `Dockerfile` with multi-stage Railway-optimized builds
+- **Railway**: `railway.toml` for deployment configuration
+- **Compose**: `docker-compose.yml` for local container development
 
-- **evals.ts**: Test suite for MCP tools
-  - Automated evaluation functions
-  - Integration with mcp-evals package
-  - Tool-specific test scenarios
+## File Naming Conventions
 
-## Architecture Patterns
+- **TypeScript Files**: kebab-case (e.g., `cors-middleware.ts`, `label-manager.ts`)
+- **Test Files**: `*.test.ts` suffix in `__tests__/` directories
+- **Configuration**: Root-level config files use standard names (tsconfig.json, package.json)
+- **Documentation**: UPPERCASE.md for important docs, lowercase.md for guides
 
-### Modular Design
-- Separation of concerns with dedicated managers
-- Utility functions isolated in separate module
-- Clear boundaries between authentication, email operations, and management features
+## Module Dependencies
 
-### Schema-First Approach
-- Zod schemas define tool interfaces
-- Runtime validation of all inputs
-- Automatic JSON schema generation for MCP
+- **Core Dependencies**: MCP SDK, Google APIs, Zod validation
+- **Utility Dependencies**: Nodemailer, mime-types, open (for OAuth)
+- **Development Dependencies**: Vitest, TypeScript, type definitions
+- **No Circular Dependencies**: Clean separation between feature modules
 
-### Error Handling
-- Graceful error handling with descriptive messages
-- Proper HTTP status code interpretation
-- User-friendly error responses
+## Environment-Specific Structure
 
-### Configuration Management
-- Environment variable support
-- Global credential storage
-- Flexible authentication paths
+- **Local Development**: Uses stdio transport, minimal configuration
+- **Railway Deployment**: HTTP transport, CORS middleware, environment detection
+- **Docker**: Containerized with credential volume mounts and health checks
+
+## Key Architectural Patterns
+
+- **Transport Abstraction**: Dual support for stdio (local) and HTTP (cloud) transports
+- **Environment Detection**: Automatic configuration based on deployment context
+- **Modular Design**: Feature-specific modules with clear separation of concerns
+- **Configuration-Driven**: Environment variables control behavior and deployment modes

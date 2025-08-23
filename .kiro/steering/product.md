@@ -1,23 +1,23 @@
 # Gmail AutoAuth MCP Server
 
-A Model Context Protocol (MCP) server that provides Gmail integration for AI assistants like Claude Desktop. The server enables natural language interactions with Gmail through a comprehensive set of tools.
+A Model Context Protocol (MCP) server that provides Gmail integration for AI assistants like Claude Desktop. The server enables natural language email management through comprehensive Gmail API integration.
 
 ## Core Features
 
-- **Email Management**: Send, draft, read, search, and delete emails
-- **Attachment Support**: Full support for sending and downloading file attachments
+- **Email Operations**: Send, draft, read, search, and delete emails with full attachment support
 - **Label Management**: Create, update, delete, and organize Gmail labels
-- **Filter Management**: Create automated filters with templates for common scenarios
+- **Filter Management**: Create and manage Gmail filters with templates for common scenarios
 - **Batch Operations**: Efficiently process multiple emails at once
 - **Auto Authentication**: Streamlined OAuth2 flow with auto browser launch
+- **Multi-Environment**: Supports local development, Docker, and Railway cloud deployment
 
-## Target Users
+## Key Capabilities
 
-Developers and power users who want to integrate Gmail functionality into AI workflows, particularly those using Claude Desktop or other MCP-compatible AI assistants.
+- Full attachment support (send, receive, download)
+- HTML and multipart email handling
+- International character support
+- Private network CORS handling for secure access
+- Dual transport modes (stdio for local, HTTP for cloud)
+- Comprehensive error handling and validation
 
-## Key Value Propositions
-
-- Eliminates manual Gmail interface switching during AI conversations
-- Provides programmatic access to advanced Gmail features
-- Supports complex email operations through natural language
-- Maintains security through proper OAuth2 implementation
+The server acts as a bridge between AI assistants and Gmail, enabling sophisticated email automation and management through natural language interactions.

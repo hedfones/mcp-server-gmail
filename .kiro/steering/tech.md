@@ -1,69 +1,65 @@
-# Technology Stack
+# Technology Stack & Build System
 
 ## Core Technologies
 
-- **Runtime**: Node.js (>=14.0.0)
-- **Language**: TypeScript with ES2020 target
-- **Module System**: ES Modules (type: "module")
-- **Build Tool**: TypeScript Compiler (tsc)
+- **Runtime**: Node.js 20+ (ES2020 modules)
+- **Language**: TypeScript with strict mode disabled
+- **Package Manager**: npm with package-lock.json
+- **Module System**: ES modules (`"type": "module"` in package.json)
 
 ## Key Dependencies
 
-- **@modelcontextprotocol/sdk**: MCP server implementation
-- **googleapis**: Google APIs client library
-- **google-auth-library**: OAuth2 authentication
-- **zod**: Runtime type validation and schema generation
-- **nodemailer**: Email composition with attachment support
-- **mime-types**: MIME type detection for attachments
+- **MCP SDK**: `@modelcontextprotocol/sdk` for Model Context Protocol implementation
+- **Google APIs**: `googleapis` and `google-auth-library` for Gmail integration
+- **Validation**: `zod` with `zod-to-json-schema` for runtime type validation
+- **Email Processing**: `nodemailer` for RFC822 compliant email creation
+- **File Types**: `mime-types` for attachment handling
+- **CLI**: `open` for browser automation during OAuth
 
-## Development Dependencies
+## Development Tools
 
-- **typescript**: TypeScript compiler
-- **@types/node**: Node.js type definitions
-- **@types/nodemailer**: Nodemailer type definitions
+- **Testing**: Vitest with coverage support (`vitest`, `@vitest/ui`)
+- **Build**: TypeScript compiler (`tsc`)
+- **Evaluation**: `mcp-eval` for MCP server testing
 
-## Build System
-
-The project uses TypeScript compilation with the following configuration:
-- Output directory: `./dist`
-- Source directory: `./src`
-- Module resolution: Node.js style
-- Strict type checking enabled
-
-## Common Commands
+## Build Commands
 
 ```bash
-# Build the project
-npm run build
+# Development
+npm run build          # Compile TypeScript to dist/
+npm run test           # Run test suite
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Generate coverage report
 
-# Start the server
-npm start
+# Production
+npm run start          # Run compiled server
+npm run prepare        # Pre-publish build step
 
-# Run authentication flow
-npm run auth
+# Authentication
+npm run auth           # Run OAuth authentication flow
 
-# Development build (triggered by prepare script)
-npm run prepare
-
-# Pre-publish build
-npm run prepublishOnly
-
-# Run evaluations
-OPENAI_API_KEY=your-key npx mcp-eval src/evals/evals.ts src/index.ts
+# Health Checks
+npm run health         # Local health check
+npm run health:railway # Railway deployment health check
 ```
 
-## Docker Support
+## Project Structure
 
-The project includes Docker configuration with:
-- Base image: node:20-slim
-- Multi-stage build process
-- Environment variable configuration for credentials
-- Port 3000 exposed for OAuth callback
+- **Source**: `src/` - TypeScript source files
+- **Output**: `dist/` - Compiled JavaScript (ES modules)
+- **Tests**: `src/__tests__/` - Vitest test files
+- **Config**: Root level config files (tsconfig.json, vitest.config.ts)
 
-## Authentication Architecture
+## Environment Support
 
-- OAuth2 flow with Google APIs
-- Credential storage in `~/.gmail-mcp/`
-- Support for both Desktop and Web application credentials
-- Auto browser launch for authentication
-- Global credential sharing across directories
+- **Local Development**: stdio transport mode
+- **Cloud Deployment**: HTTP transport with CORS middleware
+- **Docker**: Multi-stage builds with Railway optimization
+- **Railway**: Automatic environment detection and configuration
+
+## TypeScript Configuration
+
+- Target: ES2020 with Node.js module resolution
+- Strict mode disabled for flexibility
+- ESM interop enabled
+- Source maps and declaration files excluded from build
