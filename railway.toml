@@ -8,5 +8,5 @@ healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
-[env]
-NODE_ENV = "production"
+limitOverride.containers.cpu = 4
+limitOverride.containers.memoryBytes = 4000000000
