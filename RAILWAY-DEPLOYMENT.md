@@ -34,16 +34,29 @@ railway volume create gmail-credentials
 ```
 
 #### Step 3: Upload Credentials
+
+There are two ways to get your credentials into the Railway volume:
+
+**Method A: Via Railway Dashboard (Recommended)**
+1. Go to your Railway project dashboard
+2. Navigate to the "Volumes" tab
+3. Click on your `gmail-credentials` volume
+4. Use the file upload interface to upload:
+   - `gcp-oauth.keys.json` (from `~/.gmail-mcp/`)
+   - `credentials.json` (from `~/.gmail-mcp/`)
+
+**Method B: Deploy with Credentials in Container**
 ```bash
-# Run the setup helper to get instructions
-npm run setup:railway
+# Copy credentials to your project directory temporarily
+mkdir -p credentials
+cp ~/.gmail-mcp/gcp-oauth.keys.json credentials/
+cp ~/.gmail-mcp/credentials.json credentials/
 
-# Mount the volume locally (Railway will provide the mount path)
-railway volume mount gmail-credentials
+# Deploy (the volume will persist these files)
+railway up
 
-# Copy your local credentials to the mounted volume
-cp ~/.gmail-mcp/gcp-oauth.keys.json /path/to/mounted/volume/
-cp ~/.gmail-mcp/credentials.json /path/to/mounted/volume/
+# Clean up local copies
+rm -rf credentials
 ```
 
 #### Step 4: Deploy
@@ -143,8 +156,14 @@ railway variables
 # List volumes
 railway volume list
 
+# Check volume details
+railway volume list --json
+
 # Connect to running container
 railway shell
+
+# Check if files exist in volume (from within container)
+ls -la /app/credentials/
 ```
 
 ## Security Considerations

@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files for dependency installation
 COPY package.json package-lock.json* ./
 
-# Install dependencies including dev dependencies for build
-RUN npm ci --include=dev
+# Install dependencies including dev dependencies for build (skip prepare script)
+RUN npm ci --include=dev --ignore-scripts
 
 # Copy source files and TypeScript config
 COPY tsconfig.json ./
@@ -24,8 +24,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install only production dependencies (skip prepare script)
+RUN npm ci --only=production --ignore-scripts && npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
@@ -40,14 +40,14 @@ ENV GMAIL_OAUTH_PATH=/app/credentials/gcp-oauth.keys.json
 
 # Railway-specific environment variables support
 # PORT will be provided by Railway at runtime
-ENV PORT=${PORT:-3000}
+ENV PORT=3000
 
 # Expose the port (Railway will override this with its own PORT)
-EXPOSE ${PORT:-3000}
+EXPOSE 3000
 
 # Add health check for Railway monitoring
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
+  CMD curl -f http://localhost:3000/health || exit 1
 
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
