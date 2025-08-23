@@ -26,8 +26,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Configuration paths
 const CONFIG_DIR = path.join(os.homedir(), '.gmail-mcp');
-const OAUTH_PATH = process.env.GMAIL_OAUTH_PATH || path.join(CONFIG_DIR, 'gcp-oauth.keys.json');
-const CREDENTIALS_PATH = process.env.GMAIL_CREDENTIALS_PATH || path.join(CONFIG_DIR, 'credentials.json');
+const RAILWAY_CREDENTIALS_DIR = '/app/credentials';
+
+// Use Railway volume path if in Railway environment, otherwise use local config
+const environment = detectEnvironment();
+const OAUTH_PATH = process.env.GMAIL_OAUTH_PATH || 
+    (environment === 'railway' ? path.join(RAILWAY_CREDENTIALS_DIR, 'gcp-oauth.keys.json') : path.join(CONFIG_DIR, 'gcp-oauth.keys.json'));
+const CREDENTIALS_PATH = process.env.GMAIL_CREDENTIALS_PATH || 
+    (environment === 'railway' ? path.join(RAILWAY_CREDENTIALS_DIR, 'credentials.json') : path.join(CONFIG_DIR, 'credentials.json'));
+
+// Environment-based OAuth configuration for Railway deployment
+const OAUTH_CONFIG = {
+    client_id: process.env.GMAIL_CLIENT_ID,
+    client_secret: process.env.GMAIL_CLIENT_SECRET,
+    redirect_uri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:8080/oauth/callback'
+};
+
+const STORED_CREDENTIALS = {
+    refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+    access_token: process.env.GMAIL_ACCESS_TOKEN,
+    token_type: process.env.GMAIL_TOKEN_TYPE || 'Bearer',
+    expiry_date: process.env.GMAIL_EXPIRY_DATE ? parseInt(process.env.GMAIL_EXPIRY_DATE) : undefined
+};
 
 // Type definitions for Gmail API responses
 interface GmailMessagePart {
@@ -97,6 +117,71 @@ function extractEmailContent(messagePart: GmailMessagePart): EmailContent {
 
 async function loadCredentials() {
     try {
+        const environment = detectEnvironment();
+        
+        // For Railway deployment, try volume-based files first, then environment variables
+        if (environment === 'railway') {
+            // Create credentials directory if it doesn't exist
+            if (!fs.existsSync(RAILWAY_CREDENTIALS_DIR)) {
+                fs.mkdirSync(RAILWAY_CREDENTIALS_DIR, { recursive: true });
+            }
+
+            // Try to load from volume-mounted files first
+            if (fs.existsSync(OAUTH_PATH) && fs.existsSync(CREDENTIALS_PATH)) {
+                console.log('Loading Gmail credentials from Railway volume...');
+                
+                const keysContent = JSON.parse(fs.readFileSync(OAUTH_PATH, 'utf8'));
+                const keys = keysContent.installed || keysContent.web;
+
+                if (!keys) {
+                    console.error('Error: Invalid OAuth keys file format in volume.');
+                    process.exit(1);
+                }
+
+                oauth2Client = new OAuth2Client(
+                    keys.client_id,
+                    keys.client_secret,
+                    keys.redirect_uris?.[0] || 'http://localhost:8080/oauth/callback'
+                );
+
+                const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+                oauth2Client.setCredentials(credentials);
+                
+                return;
+            }
+
+            // Fallback to environment variables if files not found
+            if (OAUTH_CONFIG.client_id && OAUTH_CONFIG.client_secret && STORED_CREDENTIALS.refresh_token) {
+                console.log('Loading Gmail credentials from environment variables...');
+                
+                oauth2Client = new OAuth2Client(
+                    OAUTH_CONFIG.client_id,
+                    OAUTH_CONFIG.client_secret,
+                    OAUTH_CONFIG.redirect_uri
+                );
+
+                oauth2Client.setCredentials({
+                    refresh_token: STORED_CREDENTIALS.refresh_token,
+                    access_token: STORED_CREDENTIALS.access_token,
+                    token_type: STORED_CREDENTIALS.token_type,
+                    expiry_date: STORED_CREDENTIALS.expiry_date
+                });
+                
+                return;
+            }
+
+            // If neither approach works, provide helpful error message
+            console.error('Error: Gmail credentials not found in Railway deployment.');
+            console.error('Please either:');
+            console.error('1. Upload credential files to the Railway volume at /app/credentials/');
+            console.error('   - gcp-oauth.keys.json (OAuth client configuration)');
+            console.error('   - credentials.json (OAuth tokens)');
+            console.error('2. Or set environment variables:');
+            console.error('   - GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN');
+            process.exit(1);
+        }
+
+        // For local development, use file-based credentials
         // Create config directory if it doesn't exist
         if (!process.env.GMAIL_OAUTH_PATH && !CREDENTIALS_PATH &&!fs.existsSync(CONFIG_DIR)) {
             fs.mkdirSync(CONFIG_DIR, { recursive: true });

@@ -31,12 +31,12 @@ RUN npm ci --only=production && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 # Create directory for credentials and config
-RUN mkdir -p /gmail-server /root/.gmail-mcp
+RUN mkdir -p /app/credentials
 
 # Set environment variables for Railway compatibility
 ENV NODE_ENV=production
-ENV GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json
-ENV GMAIL_OAUTH_PATH=/root/.gmail-mcp/gcp-oauth.keys.json
+ENV GMAIL_CREDENTIALS_PATH=/app/credentials/credentials.json
+ENV GMAIL_OAUTH_PATH=/app/credentials/gcp-oauth.keys.json
 
 # Railway-specific environment variables support
 # PORT will be provided by Railway at runtime
