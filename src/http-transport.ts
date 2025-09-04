@@ -166,6 +166,14 @@ export class HttpServerTransport {
                 return;
             }
             await this.handleHealthCheck(req, res);
+        } else if (url.pathname === "/oauth2callback") {
+            // OAuth callback endpoint for authentication
+            if (req.method !== "GET") {
+                res.writeHead(405, { "Content-Type": "text/html" });
+                res.end("Method not allowed for OAuth callback");
+                return;
+            }
+            await this.handleOAuthCallback(req, res, url);
         } else if (url.pathname === "/mcp") {
             // MCP protocol requires POST requests
             if (req.method !== "POST") {
@@ -378,6 +386,80 @@ export class HttpServerTransport {
         } catch (error: any) {
             console.error("Error in handleToolCall:", error);
             throw error;
+        }
+    }
+
+    /**
+     * Handles OAuth callback requests during authentication
+     */
+    private async handleOAuthCallback(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+        try {
+            const code = url.searchParams.get('code');
+            const error = url.searchParams.get('error');
+
+            if (error) {
+                res.writeHead(400, { "Content-Type": "text/html" });
+                res.end(`
+                    <html>
+                        <body>
+                            <h1>Authentication Error</h1>
+                            <p>OAuth authentication failed: ${error}</p>
+                            <p>Please try the authentication process again.</p>
+                        </body>
+                    </html>
+                `);
+                return;
+            }
+
+            if (!code) {
+                res.writeHead(400, { "Content-Type": "text/html" });
+                res.end(`
+                    <html>
+                        <body>
+                            <h1>Authentication Error</h1>
+                            <p>No authorization code provided.</p>
+                            <p>Please try the authentication process again.</p>
+                        </body>
+                    </html>
+                `);
+                return;
+            }
+
+            // For now, just show a success page with the code
+            // The actual token exchange should be handled by the authentication flow
+            res.writeHead(200, { "Content-Type": "text/html" });
+            res.end(`
+                <html>
+                    <body>
+                        <h1>Authentication Received</h1>
+                        <p>Authorization code received successfully!</p>
+                        <p>Please check your terminal/console for further instructions.</p>
+                        <p>You can close this window.</p>
+                        <script>
+                            // Auto-close after 3 seconds
+                            setTimeout(() => {
+                                window.close();
+                            }, 3000);
+                        </script>
+                    </body>
+                </html>
+            `);
+
+            // Log the code for the authentication process to pick up
+            console.log('OAuth authorization code received:', code);
+
+        } catch (error: any) {
+            console.error('Error handling OAuth callback:', error);
+            res.writeHead(500, { "Content-Type": "text/html" });
+            res.end(`
+                <html>
+                    <body>
+                        <h1>Server Error</h1>
+                        <p>An error occurred while processing the authentication callback.</p>
+                        <p>Error: ${error.message}</p>
+                    </body>
+                </html>
+            `);
         }
     }
 
