@@ -30,154 +30,39 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
 
 ## Installation & Authentication
 
-### Installing via Smithery
+For detailed installation instructions, see [Installation Guide](docs/installation.md).
 
-To install Gmail AutoAuth for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@gongrzhe/server-gmail-autoauth-mcp):
+### Quick Start
 
-```bash
-npx -y @smithery/cli install @gongrzhe/server-gmail-autoauth-mcp --client claude
-```
-
-### Installing Manually
-1. Create a Google Cloud Project and obtain credentials:
-
-   a. Create a Google Cloud Project:
-      - Go to [Google Cloud Console](https://console.cloud.google.com/)
-      - Create a new project or select an existing one
-      - Enable the Gmail API for your project
-
-   b. Create OAuth 2.0 Credentials:
-      - Go to "APIs & Services" > "Credentials"
-      - Click "Create Credentials" > "OAuth client ID"
-      - Choose either "Desktop app" or "Web application" as application type
-      - Give it a name and click "Create"
-      - For Web application, add `http://localhost:3000/oauth2callback` to the authorized redirect URIs
-      - Download the JSON file of your client's OAuth keys
-      - Rename the key file to `gcp-oauth.keys.json`
-
-2. Run Authentication:
-
-   You can authenticate in two ways:
-
-   a. Global Authentication (Recommended):
+1. Install via Smithery:
    ```bash
-   # First time: Place gcp-oauth.keys.json in your home directory's .gmail-mcp folder
-   mkdir -p ~/.gmail-mcp
-   mv gcp-oauth.keys.json ~/.gmail-mcp/
+   npx -y @smithery/cli install @gongrzhe/server-gmail-autoauth-mcp --client claude
+   ```
 
-   # Run authentication from anywhere
+2. Or install manually and configure OAuth credentials
+
+3. Run authentication:
+   ```bash
    npx @gongrzhe/server-gmail-autoauth-mcp auth
    ```
 
-   b. Local Authentication:
-   ```bash
-   # Place gcp-oauth.keys.json in your current directory
-   # The file will be automatically copied to global config
-   npx @gongrzhe/server-gmail-autoauth-mcp auth
-   ```
-
-   The authentication process will:
-   - Look for `gcp-oauth.keys.json` in the current directory or `~/.gmail-mcp/`
-   - If found in current directory, copy it to `~/.gmail-mcp/`
-   - Open your default browser for Google authentication
-   - Save credentials as `~/.gmail-mcp/credentials.json`
-
-   > **Note**: 
-   > - After successful authentication, credentials are stored globally in `~/.gmail-mcp/` and can be used from any directory
-   > - Both Desktop app and Web application credentials are supported
-   > - For Web application credentials, make sure to add `http://localhost:3000/oauth2callback` to your authorized redirect URIs
-
-3. Configure in Claude Desktop:
-
-```json
-{
-  "mcpServers": {
-    "gmail": {
-      "command": "npx",
-      "args": [
-        "@gongrzhe/server-gmail-autoauth-mcp"
-      ]
-    }
-  }
-}
-```
-
-### Docker Support
-
-If you prefer using Docker:
-
-1. Authentication:
-```bash
-docker run -i --rm \
-  --mount type=bind,source=/path/to/gcp-oauth.keys.json,target=/gcp-oauth.keys.json \
-  -v mcp-gmail:/gmail-server \
-  -e GMAIL_OAUTH_PATH=/gcp-oauth.keys.json \
-  -e "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json" \
-  -p 3000:3000 \
-  mcp/gmail auth
-```
-
-2. Usage:
-```json
-{
-  "mcpServers": {
-    "gmail": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "mcp-gmail:/gmail-server",
-        "-e",
-        "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json",
-        "mcp/gmail"
-      ]
-    }
-  }
-}
-```
-
-### Cloud Server Authentication
-
-For cloud server environments (like n8n), you can specify a custom callback URL during authentication:
-
-```bash
-npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2callback
-```
-
-#### Setup Instructions for Cloud Environment
-
-1. **Configure Reverse Proxy:**
-   - Set up your n8n container to expose a port for authentication
-   - Configure a reverse proxy to forward traffic from your domain (e.g., `gmail.gongrzhe.com`) to this port
-
-2. **DNS Configuration:**
-   - Add an A record in your DNS settings to resolve your domain to your cloud server's IP address
-
-3. **Google Cloud Platform Setup:**
-   - In your Google Cloud Console, add your custom domain callback URL (e.g., `https://gmail.gongrzhe.com/oauth2callback`) to the authorized redirect URIs list
-
-4. **Run Authentication:**
-   ```bash
-   npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2callback
-   ```
-
-5. **Configure in your application:**
+4. Configure in Claude Desktop:
    ```json
    {
      "mcpServers": {
        "gmail": {
          "command": "npx",
-         "args": [
-           "@gongrzhe/server-gmail-autoauth-mcp"
-         ]
+         "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
        }
      }
    }
    ```
 
-This approach allows authentication flows to work properly in environments where localhost isn't accessible, such as containerized applications or cloud servers.
+### Deployment Options
+
+- **Docker**: See [Docker Setup Guide](docs/docker-setup.md)
+- **Railway**: See [Railway Deployment Guide](docs/railway-deployment.md)
+- **CORS Configuration**: See [CORS Configuration Guide](docs/cors-configuration.md)
 
 ## Available Tools
 
@@ -447,38 +332,11 @@ Creates a filter using pre-defined templates for common scenarios.
 
 ## Filter Management Features
 
-### Filter Criteria
+The server provides comprehensive Gmail filter management with templates for common scenarios. For detailed examples and usage patterns, see [Filter Examples Guide](docs/filter-examples.md).
 
-You can create filters based on various criteria:
+### Quick Filter Examples
 
-| Criteria | Example | Description |
-|----------|---------|-------------|
-| `from` | `"sender@example.com"` | Emails from a specific sender |
-| `to` | `"recipient@example.com"` | Emails sent to a specific recipient |
-| `subject` | `"Meeting"` | Emails with specific text in subject |
-| `query` | `"has:attachment"` | Gmail search query syntax |
-| `negatedQuery` | `"spam"` | Text that must NOT be present |
-| `hasAttachment` | `true` | Emails with attachments |
-| `size` | `10485760` | Email size in bytes |
-| `sizeComparison` | `"larger"` | Size comparison (`larger`, `smaller`) |
-
-### Filter Actions
-
-Filters can perform the following actions:
-
-| Action | Example | Description |
-|--------|---------|-------------|
-| `addLabelIds` | `["IMPORTANT", "Label_Work"]` | Add labels to matching emails |
-| `removeLabelIds` | `["INBOX", "UNREAD"]` | Remove labels from matching emails |
-| `forward` | `"backup@example.com"` | Forward emails to another address |
-
-### Filter Templates
-
-The server includes pre-built templates for common filtering scenarios:
-
-#### 1. From Sender Template (`fromSender`)
-Filters emails from a specific sender and optionally archives them.
-
+**Auto-organize newsletters:**
 ```json
 {
   "template": "fromSender",
@@ -490,125 +348,13 @@ Filters emails from a specific sender and optionally archives them.
 }
 ```
 
-#### 2. Subject Filter Template (`withSubject`)
-Filters emails with specific subject text and optionally marks as read.
-
-```json
-{
-  "template": "withSubject",
-  "parameters": {
-    "subjectText": "[URGENT]",
-    "labelIds": ["Label_Urgent"],
-    "markAsRead": false
-  }
-}
-```
-
-#### 3. Attachment Filter Template (`withAttachments`)
-Filters all emails with attachments.
-
-```json
-{
-  "template": "withAttachments",
-  "parameters": {
-    "labelIds": ["Label_Attachments"]
-  }
-}
-```
-
-#### 4. Large Email Template (`largeEmails`)
-Filters emails larger than a specified size.
-
+**Handle large attachments:**
 ```json
 {
   "template": "largeEmails",
   "parameters": {
     "sizeInBytes": 10485760,
     "labelIds": ["Label_Large"]
-  }
-}
-```
-
-#### 5. Content Filter Template (`containingText`)
-Filters emails containing specific text and optionally marks as important.
-
-```json
-{
-  "template": "containingText",
-  "parameters": {
-    "searchText": "invoice",
-    "labelIds": ["Label_Finance"],
-    "markImportant": true
-  }
-}
-```
-
-#### 6. Mailing List Template (`mailingList`)
-Filters mailing list emails and optionally archives them.
-
-```json
-{
-  "template": "mailingList",
-  "parameters": {
-    "listIdentifier": "dev-team",
-    "labelIds": ["Label_DevTeam"],
-    "archive": true
-  }
-}
-```
-
-### Common Filter Examples
-
-Here are some practical filter examples:
-
-**Auto-organize newsletters:**
-```json
-{
-  "criteria": {
-    "from": "newsletter@company.com"
-  },
-  "action": {
-    "addLabelIds": ["Label_Newsletter"],
-    "removeLabelIds": ["INBOX"]
-  }
-}
-```
-
-**Handle promotional emails:**
-```json
-{
-  "criteria": {
-    "query": "unsubscribe OR promotional"
-  },
-  "action": {
-    "addLabelIds": ["Label_Promotions"],
-    "removeLabelIds": ["INBOX", "UNREAD"]
-  }
-}
-```
-
-**Priority emails from boss:**
-```json
-{
-  "criteria": {
-    "from": "boss@company.com"
-  },
-  "action": {
-    "addLabelIds": ["IMPORTANT", "Label_Boss"]
-  }
-}
-```
-
-**Large attachments:**
-```json
-{
-  "criteria": {
-    "size": 10485760,
-    "sizeComparison": "larger",
-    "hasAttachment": true
-  },
-  "action": {
-    "addLabelIds": ["Label_LargeFiles"]
   }
 }
 ```
